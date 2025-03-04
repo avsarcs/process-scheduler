@@ -1,13 +1,16 @@
-import { Injectable } from "@angular/core";
+import { Injectable, inject } from "@angular/core";
 
 import { Algorithm } from "../models/algorithm.model";
 import { Process } from "../models/process.model";
 import { Error } from "../models/error.model";
+import { AnalyticsService } from "./analytics.service";
 
 @Injectable({
   providedIn: "root",
 })
 export class CoreService {
+
+  private analytics = inject(AnalyticsService);
 
   private algorithm: Algorithm[] = [ Algorithm.FirstComeFirstServe ];
 
@@ -65,6 +68,11 @@ export class CoreService {
 
     if (this.processQueue[core].length == 1) {
       this.runningPId[core] = this.processQueue[core][0].id;
+      this.analytics.processRunning(process.id, core);
+      this.analytics.coreBusy(core);
+    }
+    else {
+      this.analytics.processWaiting(process.id, core);
     }
 
     return true;
@@ -107,13 +115,14 @@ export class CoreService {
   step(core: number): number {
 
     if (core < 0 || core >= this.coreCount)
-      return -1;
+      return Error.CoreOutOfBound;
 
-    const runningProc: Process | undefined = this.processQueue[core].find(proc => proc.id == this.runningPId[core]);
-
-    if (!runningProc) {
-      return Error.ProcNotFound;
+    if (this.processQueue[core].length == 0) {
+      this.analytics.coreIdle(core);
+      return Error.NoProcessInQueue;
     }
+
+    const runningProc: Process = this.processQueue[core][0];
 
     runningProc.remaining -= 1;
 
@@ -123,47 +132,59 @@ export class CoreService {
         if (runningProc.remaining > 0)
           break;
 
+        this.analytics.processFinished(this.runningPId[core], core);
         this.removeProcess(core, this.runningPId[core]);
         this.runningPId[core] = -1;
 
-        if (this.processQueue.length > 0)
+        if (this.processQueue[core].length > 0) {
           this.runningPId[core] = this.processQueue[core][0].id;
+          this.analytics.processRunning(this.runningPId[core], core);
+        }
 
         break;
 
       case Algorithm.ShortestJobFirst:
 
-        this.runningPId[core] = -1;
+        if (runningProc.remaining == 0) {
+          this.analytics.processFinished(runningProc.id, core);
+          this.removeProcess(core, runningProc.id);
+        }
 
-        if (this.processQueue.length > 0) {
+        const shortest: Process = [...this.processQueue[core]].sort((a, b) => a.burstLength - b.burstLength)[0];
+        this.runningPId[core] = shortest.id;
 
-          if (runningProc.remaining == 0) {
-            this.removeProcess(core, runningProc.id);
-          }
-
-          const shortest: Process = [...this.processQueue[core]].sort((a, b) => a.burstLength - b.burstLength)[0];
-          this.runningPId[core] = shortest.id;
-
-          if (this.processQueue[core][0].id != this.runningPId[core]) {
-            this.bringToFront(core, shortest);
-          }
-
+        if (this.processQueue[core][0].id != this.runningPId[core]) {
+          this.analytics.processWaiting(this.processQueue[core][0].id, core);
+          this.bringToFront(core, shortest);
+          this.analytics.processRunning(this.runningPId[core], core);
         }
 
         break;
       case Algorithm.RoundRobin:
-        this.rr_step[core]++;
-        const change: Boolean = runningProc.remaining <= 0 || this.rr_step[core] % this.timeQuantum[core] == 0;
+
+        if (this.rr_step[core] < this.timeQuantum[core])
+          this.rr_step[core]++;
+
+        const change: Boolean = ( this.rr_step[core] % this.timeQuantum[core] == 0 && this.processQueue[core].length > 1 )
+          || runningProc.remaining <= 0 ;
 
         if (change) {
           this.rr_step[core] = 0;
           this.removeProcess(core, runningProc.id);
 
           if (runningProc.remaining > 0) {
+            this.analytics.processWaiting(runningProc.id, core);
             this.queueProcess(core, runningProc);
           }
+          else {
+            this.analytics.processFinished(runningProc.id, core);
+          }
 
-          this.runningPId[core] = this.processQueue[core][0].id;
+          if (this.processQueue[core].length > 0) {
+            this.runningPId[core] = this.processQueue[core][0].id;
+            this.analytics.processRunning(this.runningPId[core], core);
+          }
+
         }
 
         break;

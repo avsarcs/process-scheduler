@@ -2,7 +2,6 @@ import { Injectable } from "@angular/core";
 
 interface ProcessData {
   id: number;
-  core: number;
   arrived: number;
   becameWaiting: number;
   becameRunning: number; // milliseconds since UNIX epoch
@@ -18,7 +17,6 @@ enum Time {
 }
 
 interface TimeBlock {
-  core: number;
   state: CoreState;
   from: number;
   to: number; // milliseconds since UNIX epoch
@@ -26,7 +24,6 @@ interface TimeBlock {
 }
 
 interface CoreData {
-  core: number;
   totalIdleTime: number; // unit: milliseconds
   totalBusyTime: number; // unit: milliseconds
 }
@@ -60,58 +57,123 @@ export class AnalyticsService {
 
   private overallCoreUtilization: number = 0;
 
-  private processData: ProcessData[] = [];
+  private processData: ProcessData[][] = [];
   private coreTimeBlocks: TimeBlock[][] = [];
   private coreData: CoreData[] = [];
 
   reset() {
-    // TODO: Finish last.
+    this.processData = [];
+    this.coreTimeBlocks = [];
+    this.coreData = [];
+
+    this.correctedUntil = [];
+
+    this.overallCoreUtilization = 0;
+
+    this.overallWaitingTime = {
+      "average": 0,
+      "count": 0,
+    }
+
+    this.overallTurnaroundTime = {
+      "average": 0,
+      "count": 0,
+    }
+
+    this.waitingTime = [];
+    this.turnaroundTime = [];
+    this.coreUtilization = [];
+
+    this.window = 200;
+    this.coreWindow = 100000;
+  }
+
+  removeCore(core: number): boolean {
+    if (core < 0 || core >= this.coreUtilization.length)
+      return false;
+
+    this.waitingTime = this.waitingTime.filter( (elem, i) => i != core );
+    this.turnaroundTime = this.turnaroundTime.filter( (elem, i) => i != core );
+    this.coreUtilization = this.coreUtilization.filter( (elem, i) => i != core );
+
+    this.coreTimeBlocks = this.coreTimeBlocks.filter( (elem, i) => i != core);
+    this.coreData = this.coreData.filter( (elem, i) => i != core );
+
+    this.processData = this.processData.filter( (elem, i) => i != core );
+
+    return true;
   }
 
   processWaiting(id: number, core: number): void {
-    const pData: ProcessData | undefined = this.processData.find((p) => p.id == id);
+    const now = Date.now();
+
+    const pData: ProcessData | undefined = this.processData[core].find((p) => p.id == id);
 
     if (!pData) {
       const newPData: ProcessData = {
         id,
-        core,
-        arrived: Date.now(),
-        becameWaiting: Date.now(),
+        arrived: now,
+        becameWaiting: now,
         becameRunning: Time.NOT_ASSIGNED_YET
       }
 
-      this.processData.push(newPData);
+      this.processData[core].push(newPData);
     }
     else {
-      pData.becameWaiting = Date.now();
+      pData.becameWaiting = now;
     }
 
   }
 
 
   processRunning(id: number, core: number): void {
-    const pData: ProcessData | undefined = this.processData.find((p) => p.id == id);
+    const now = Date.now();
 
-    if (pData) {
-      pData.becameRunning = Date.now();
+    let pData: ProcessData | undefined = this.processData[core].find((p) => p.id == id);
 
-      const waited: number = pData.becameRunning - pData.becameWaiting;
+    if (!pData) {
+      pData = {
+        "id": id,
+        "arrived": now,
+        "becameWaiting": now,
+        "becameRunning": now,
+      }
 
-      this.overallWaitingTime.average =
-        ((this.overallWaitingTime.average * this.overallWaitingTime.count) + waited) / (this.overallWaitingTime.count + 1);
-
-      if (this.overallWaitingTime.count < this.window)
-        this.overallWaitingTime.count++;
+      this.processData[core].push(pData);
     }
+
+    pData.becameRunning = now;
+
+    const waited: number = pData.becameRunning - pData.becameWaiting;
+
+    this.waitingTime[core].average =
+      ((this.waitingTime[core].average * this.waitingTime[core].count) + waited) / (this.waitingTime[core].count + 1);
+
+    if (this.waitingTime[core].count < this.window)
+      this.waitingTime[core].count++;
+
+    this.overallWaitingTime.average =
+      ((this.overallWaitingTime.average * this.overallWaitingTime.count) + waited) / (this.overallWaitingTime.count + 1);
+
+    if (this.overallWaitingTime.count < this.window)
+      this.overallWaitingTime.count++;
 
   }
 
   processFinished(id: number, core: number): void {
-    const pData: ProcessData | undefined = this.processData.find((p) => p.id == id);
+    const now = Date.now();
+
+    const pData: ProcessData | undefined = this.processData[core].find((p) => p.id == id);
 
     if (pData) {
-      const finished = Date.now();
+      const finished = now;
       const turnaround = finished - pData.arrived;
+
+      this.turnaroundTime[core].average =
+        ((this.turnaroundTime[core].average * this.turnaroundTime[core].count) + turnaround) / (this.turnaroundTime[core].count + 1);
+
+      if (this.turnaroundTime[core].count < this.window)
+        this.turnaroundTime[core].count++;
 
       this.overallTurnaroundTime.average =
         ((this.overallTurnaroundTime.average * this.overallTurnaroundTime.count) + turnaround) / (this.overallTurnaroundTime.count + 1);
@@ -119,6 +181,7 @@ export class AnalyticsService {
       if (this.overallTurnaroundTime.count < this.window)
         this.overallTurnaroundTime.count++;
 
+      this.processData[core] = this.processData[core].filter((p) => p.id != id);
     }
   }
 
@@ -138,7 +201,6 @@ export class AnalyticsService {
     }
 
     timeblocks.push({
-      "core": core,
       "state": CoreState.IDLE,
       "from": now,
       "to": Time.NOT_ASSIGNED_YET,
@@ -162,7 +224,6 @@ export class AnalyticsService {
     }
 
     timeblocks.push({
-      "core": core,
       "state": CoreState.BUSY,
       "from": now,
       "to": Time.NOT_ASSIGNED_YET,
@@ -178,7 +239,6 @@ export class AnalyticsService {
     while (this.coreData.length - 1 < core)
       this.coreData.push(
         {
-          "core": this.coreData.length,
           "totalIdleTime": 0,
           "totalBusyTime": 0,
         }
@@ -190,11 +250,24 @@ export class AnalyticsService {
     while (this.correctedUntil.length - 1 < core)
       this.correctedUntil.push(0);
 
+    while (this.waitingTime.length - 1 < core)
+      this.waitingTime.push(
+        {
+          "average": 0,
+          "count": 0,
+        }
+      );
+
+    while (this.turnaroundTime.length - 1 < core)
+      this.turnaroundTime.push(
+        {
+          "average": 0,
+          "count": 0,
+        }
+      );
+
   }
 
-
-  // ONLY the most recent timeblock.. should have -1 in its to.. wherefore we can take "to" as now...
-  // We should not recompute the entire thing.. but prune out the diffs...
   private correctedUntil: number[] = []
   updateCoreUtilization() {
 
@@ -284,7 +357,7 @@ export class AnalyticsService {
 
     }
 
-    // It is okay if we erase the timestamps beyond the coreWindow only every now and then
+    // It is okay if we erase the timeblocks beyond the coreWindow only every now and then
     // as long as we don't consider them, thus decreasing the frequency of this costly operation.
     if (Math.random() < 0.05) {
       for (let core = 0; core < this.correctedUntil.length; core++) {
@@ -301,6 +374,10 @@ export class AnalyticsService {
     for (let core = 0; core < this.coreUtilization.length; core++) {
       const cData = this.coreData[core];
       this.coreUtilization[core] = cData.totalBusyTime / (cData.totalBusyTime + cData.totalIdleTime);
+    }
+
+    if (this.coreUtilization.length > 0) {
+      this.overallCoreUtilization = this.coreUtilization.reduce((a, b) => a + b) / this.coreUtilization.length;
     }
 
   }
@@ -355,11 +432,7 @@ export class AnalyticsService {
   }
 
   getOverallCoreUtilization(): number {
-    if (this.coreUtilization.length > 0) {
-      return this.coreUtilization.reduce((a, b) => a + b) / this.coreUtilization.length;
-    }
-
-    return 0;
+    return this.overallCoreUtilization;
   }
 
 }
