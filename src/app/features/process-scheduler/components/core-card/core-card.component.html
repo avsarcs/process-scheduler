@@ -1,0 +1,59 @@
+<div class="core-card">
+  <div class="core-baby">
+    <img alt="a core" src="core.gif" width="300" />
+    <div class="core-stats">
+      <span>Core {{ coreId() + 1 }}</span>
+      <span>Average Core Utilization: {{analytics.getCoreUtilization( coreId() ) * 100 | number: '1.2-2'}}%</span>
+      <span>Average Waiting Time: {{analytics.getWaitingTime( coreId() ) | number: '1.0-0'}} ms</span>
+      <span>Average Turnaround Time: {{analytics.getTurnaroundTime( coreId() ) | number: '1.0-0'}} ms</span>
+      <span>Queue Length: {{coreService.getQueueLength( coreId() ) | number: '1.0-0'}}</span>
+    </div>
+  </div>
+
+  <form [formGroup]="coreConfigForm" class="core-settings">
+    <div class="sched-algo-wrapper">
+      <label for="scheduling-algorithm">Scheduling Algorithm:</label>
+      <select
+        name="scheduling-algorithm"
+        id="scheduling-algorithm"
+        formControlName="algorithm"
+        (change)="handleAlgorithmChange()"
+      >
+        <option [value]="algoEnum.FirstComeFirstServe">First Come First Serve</option>
+        <option [value]="algoEnum.RoundRobin">Round Robin</option>
+        <option [value]="algoEnum.ShortestJobFirst">Shortest Job First</option>
+      </select>
+    </div>
+    @if (coreConfigForm.value.algorithm == algoEnum.RoundRobin) {
+    <div class="time-quantum-wrapper">
+      <label for="time-quantum">Time Quantum:</label>
+      <input
+        type="number"
+        id="time-quantum"
+        name="time-quantum"
+        min="1"
+        max="10000"
+        formControlName="timeQuantum"
+        (change)="changeTimeQuantum($event)"
+      />
+    </div>
+    }
+    <div class="action-controls">
+      <button type="button" class="playback-button" (click)="togglePlaying()">
+        @if (playing) {
+          Stop.
+        }
+        @else {
+          Go!
+        }
+      </button>
+      <label for="speed">Core Speed:</label>
+      <input type="number" [value]="speed()[coreId()]" id="speed" name="speed" min="10" max="10000" (change)="changeSpeed($event)"/>
+      burst units per second
+      @if (errorMessage) {
+        <div class="error-message">{{ errorMessage }}</div>
+      }
+    </div>
+  </form>
+</div>
+<process-queue [coreId]="coreId()"/>

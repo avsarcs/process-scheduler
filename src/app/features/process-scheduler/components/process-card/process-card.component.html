@@ -1,0 +1,18 @@
+<div class="process-card">
+  <div class="pie-chart-container">
+    <div class="pie-chart" [style.--progress]="(remaining() / burstLength()) * 100 + '%'">
+      <div class="remaining-text">{{ remaining() }}</div>
+    </div>
+  </div>
+
+  <div class="process-info">
+    <div class="info-item">
+      <span class="label">Process:</span>
+      <span class="value">{{ id() }}</span>
+    </div>
+    <div class="info-item">
+      <span class="label">Burst Length:</span>
+      <span class="value">{{ burstLength() }}</span>
+    </div>
+  </div>
+</div>

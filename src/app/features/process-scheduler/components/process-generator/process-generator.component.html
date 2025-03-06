@@ -1,0 +1,64 @@
+<div class="process-generator-container">
+  <h3>Process Arrival Rate</h3>
+
+  <form [formGroup]="processGenerationForm">
+  <div class="process-type-selector">
+    <input type="radio" id="linear" name="processType" [value]="gParadigm.LINEAR" formControlName="generationParadigm"
+      (change)="updateGenerationParadigm()">
+    <label for="linear">Linear (fixed intervals)</label>
+
+    <input type="radio" id="poisson" name="processType" [value]="gParadigm.POISSON" formControlName="generationParadigm"
+      (change)="updateGenerationParadigm()" class="ml-3">
+    <label for="poisson">Poisson process (random arrivals)</label>
+  </div>
+
+  <div class="rate-input-container">
+    <input type="number" min="0.1" step="0.1"  formControlName="meanArrivalCount" (change)="updateCount($event)">
+
+    <span>Processes per</span>
+
+    <select formControlName="timeUnit" (ngModelChange)="updateTimeUnit()">
+      <option [value]="tUnit.SECOND">second</option>
+      <option [value]="tUnit.MINUTE">minute</option>
+      <option [value]="tUnit.HOUR">hour</option>
+    </select>
+  </div>
+  </form>
+
+
+  @if (errorMessage) {
+    <div class="error-message">
+      {{ errorMessage }}
+    </div>
+  }
+
+
+  <div class="control-buttons">
+    <button class="start-button" [disabled]="isGenerating" (click)="startGeneration()">
+      Start Generation
+    </button>
+    <button class="stop-button" [disabled]="!isGenerating" (click)="stopGeneration()">
+      Stop Generation
+    </button>
+  </div>
+
+  <div class="status-indicator" [class.active]="isGenerating">
+    Status: {{ isGenerating ? 'Generating' : 'Idle' }}
+  </div>
+
+  @if (processGenerationForm.value.generationParadigm == gParadigm.POISSON) {
+    <p class="description">
+      Process arrivals are modeled according to a Poisson process.
+    </p>
+  }
+
+  @if (processGenerationForm.value.generationParadigm == gParadigm.LINEAR) {
+    <p class="description">
+      Processes will arrive at fixed intervals.
+    </p>
+  }
+
+</div>
+
+<core-probability-distributor [coreCount]="coreCount()" [coreSpeeds]="coreSpeeds()"
+  [(coreProbabilities)]="coreProbabilities" />

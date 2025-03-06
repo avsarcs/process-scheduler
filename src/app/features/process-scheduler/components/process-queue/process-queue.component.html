@@ -1,0 +1,5 @@
+<div class="process-queue">
+@for (process of coreService.getProcessQueue(coreId()); track $index) {
+  <process-card [id]="process.id" [remaining]="process.remaining" [burstLength]="process.burstLength" />
+}
+</div>

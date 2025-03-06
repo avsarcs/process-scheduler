@@ -1,0 +1,20 @@
+<process-generator [coreCount]="coreCount" [coreSpeeds]="coreSpeeds" [(nextPId)]="nextPid" />
+
+
+<button (click)="reset()" class="reset-button">
+  Reset Cores and Queues
+</button>
+<div class="stats">
+  <span>Average Overall Core Utilization: {{ analyticsService.getOverallCoreUtilization() * 100 | number: '1.2-2'}}%</span>
+  <span>Average Overall Waiting Time: {{ analyticsService.getOverallWaitingTime() | number: '1.0-0'}} ms</span>
+  <span>Average Overall Turnaround Time: {{ analyticsService.getOverallTurnaroundTime() | number: '1.0-0'}} ms</span>
+</div>
+
+<window-setter/>
+
+@for (speed of coreSpeeds; track $index) {
+<core-card [coreId]="$index" [(speed)]="coreSpeeds" />
+<hr>
+}
+
+<button (click)="addCore()" class="add-core-button">Add Core</button>

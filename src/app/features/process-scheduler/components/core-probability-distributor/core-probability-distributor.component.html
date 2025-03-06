@@ -1,0 +1,76 @@
+<div class="core-probability-container">
+  <h3>Core Probability Distribution</h3>
+  <span class="description">Define with what probability a newly arrived process queues in front of which core</span>
+  <div class="distribution-buttons">
+    <button class="distribution-button" (click)="setEqualDistribution()">
+      Equal Distribution
+    </button>
+    <button class="distribution-button" (click)="setProportionalToSpeed()">
+      Proportional to Speed
+    </button>
+    <button class="distribution-button" (click)="openProbabilityOverlay()">
+      Assign Probabilities
+    </button>
+  </div>
+
+   @if (showOverlay()) {
+    <div class="overlay">
+      <div class="overlay-content">
+        <h3>Assign Probabilities</h3>
+        <p class="instructions">Enter probability values for each core. Total must equal 100%.</p>
+
+        <div class="current-total">
+          Current Total: {{ currentTotal() }}%
+        </div>
+
+        <div class="manual-probability-row">
+          @for (core of coreProbabilities(); track $index) {
+            <label>Core {{core.id + 1}} (Speed: {{core.speed}}):</label>
+            <input type="text" [ngModel]="manualProbabilities[$index]" (ngModelChange)="updateManualProbability($index, $event)"
+              class="manual-probability-input" placeholder="0.0%" />
+          }
+        </div>
+
+        @if (overlayError()) {
+        <div class="error-message">
+          {{ overlayError() }}
+        </div>
+        }
+
+
+        <div class="overlay-buttons">
+          <button (click)="closeOverlay()">Cancel</button>
+          <button (click)="applyManualProbabilities()">Apply</button>
+        </div>
+      </div>
+    </div>
+   }
+
+
+  <div class="cores-table">
+    <div class="table-header">
+      <div class="core-column">Core</div>
+      <div class="speed-column">Speed</div>
+      <div class="probability-column">Probability</div>
+    </div>
+
+    <div class="core-row">
+      @for (core of coreProbabilities(); track $index) {
+      <div class="core-column">Core {{core.id + 1}}</div>
+      <div class="speed-column">{{core.speed}}</div>
+      <div class="probability-column">
+        <div class="slider-container">
+          <input type="range" min="0.001" max="1" step="0.001" [disabled]="coreProbabilities().length === 1"
+            [ngModel]="core.probability" (ngModelChange)="updateProbability($index, $event)"
+            class="probability-slider" />
+          <input type="text" class="probability-input" [disabled]="coreProbabilities().length === 1"
+            [ngModel]="formatProbability(core.probability)" (blur)="handleDirectInput($index, $event)"
+            (keyup.enter)="handleInputAndBlur($index, $event)" />
+        </div>
+      </div>
+      }
+
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,58 @@
+
+.core-card {
+  display: flex;
+}
+
+.core-baby {
+  font-family: 'Courier New', Courier, monospace;
+  display: flex;
+  justify-content: space-between;
+
+  width: 750px;
+  height: 240px;
+  border: 5px solid black;
+  border-radius: 5px 0 0 5px;
+}
+
+.core-stats {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+  justify-content: space-around;
+  padding: 1rem;
+}
+
+.core-settings {
+  display: flex;
+  flex-direction: column;
+
+  padding: 1rem;
+
+  width: 500px;
+  border-right: 5px solid green;
+  border-top: 5px solid green;
+  border-bottom: 5px solid green;
+  border-radius: 0 5px 5px 0;
+}
+
+.time-quantum-wrapper {
+  margin-top: 1rem;
+}
+
+.action-controls {
+  margin-top: 1rem;
+}
+
+.playback-button {
+  margin-right: 1rem;
+}
+
+button {
+  cursor: pointer;
+  border-bottom: 5px solid black;
+}
+
+button:hover {
+  margin-top: 3px;
+  border-bottom: 2px solid black;
+}

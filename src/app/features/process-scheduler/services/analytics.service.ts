@@ -1,4 +1,4 @@
-import { Injectable } from "@angular/core";
+import { Injectable, inject } from "@angular/core";
 
 interface ProcessData {
   id: number;
@@ -39,11 +39,21 @@ interface RunningAverage {
 export class AnalyticsService {
 
   private window: number = 200; // number of operations (process arrived / executing / waiting / finished)
-  private coreWindow: number = 100000; // CPU utilization in the past [CPUWindow] milliseconds
+  private coreWindow: number = 10000; // CPU utilization in the past [CPUWindow] milliseconds
 
-  private waitingTime: RunningAverage[] = [] // unit: milliseconds
-  private turnaroundTime : RunningAverage[] = [] // unit: milliseconds
-  private coreUtilization: number[] = []; // percentage
+  private waitingTime: RunningAverage[] = [
+    {
+      "average": 0,
+      "count": 0,
+    }
+  ] // unit: milliseconds
+  private turnaroundTime: RunningAverage[] = [
+    {
+      "average": 0,
+      "count": 0,
+    }
+  ] // unit: milliseconds
+  private coreUtilization: number[] = [0]; // percentage
 
   private overallWaitingTime: RunningAverage = {
     "average": 0,
@@ -57,16 +67,32 @@ export class AnalyticsService {
 
   private overallCoreUtilization: number = 0;
 
-  private processData: ProcessData[][] = [];
-  private coreTimeBlocks: TimeBlock[][] = [];
-  private coreData: CoreData[] = [];
+  private processData: ProcessData[][] = [[]];
+  private coreTimeBlocks: TimeBlock[][] = [[]];
+  private coreData: CoreData[] = [
+    {
+      "totalIdleTime": 0,
+      "totalBusyTime": 0,
+    }
+  ];
+
+  private coreOpen: Boolean[] = [false];
+  private coreProcrastinating: Boolean[] = [false];
 
   reset() {
-    this.processData = [];
-    this.coreTimeBlocks = [];
-    this.coreData = [];
+    this.coreOpen = [false];
+    this.coreProcrastinating = [false];
 
-    this.correctedUntil = [];
+    this.processData = [[]];
+    this.coreTimeBlocks = [[]];
+    this.coreData = [
+      {
+        "totalIdleTime": 0,
+        "totalBusyTime": 0,
+      }
+    ];
+
+    this.correctedUntil = [0];
 
     this.overallCoreUtilization = 0;
 
@@ -80,26 +106,40 @@ export class AnalyticsService {
       "count": 0,
     }
 
-    this.waitingTime = [];
-    this.turnaroundTime = [];
-    this.coreUtilization = [];
+    this.waitingTime = [
+      {
+        "average": 0,
+        "count": 0,
+      }
+    ];
+    this.turnaroundTime = [
+      {
+        "average": 0,
+        "count": 0,
+      }
+    ];
+    this.coreUtilization = [0];
 
     this.window = 200;
     this.coreWindow = 100000;
+  }
+
+  addCore() {
+    this.ensureCoreCount(this.coreUtilization.length);
   }
 
   removeCore(core: number): boolean {
     if (core < 0 || core >= this.coreUtilization.length)
       return false;
 
-    this.waitingTime = this.waitingTime.filter( (elem, i) => i != core );
-    this.turnaroundTime = this.turnaroundTime.filter( (elem, i) => i != core );
-    this.coreUtilization = this.coreUtilization.filter( (elem, i) => i != core );
+    this.waitingTime = this.waitingTime.filter((elem, i) => i != core);
+    this.turnaroundTime = this.turnaroundTime.filter((elem, i) => i != core);
+    this.coreUtilization = this.coreUtilization.filter((elem, i) => i != core);
 
-    this.coreTimeBlocks = this.coreTimeBlocks.filter( (elem, i) => i != core);
-    this.coreData = this.coreData.filter( (elem, i) => i != core );
+    this.coreTimeBlocks = this.coreTimeBlocks.filter((elem, i) => i != core);
+    this.coreData = this.coreData.filter((elem, i) => i != core);
 
-    this.processData = this.processData.filter( (elem, i) => i != core );
+    this.processData = this.processData.filter((elem, i) => i != core);
 
     return true;
   }
@@ -189,8 +229,14 @@ export class AnalyticsService {
     const now = Date.now();
     this.ensureCoreCount(core);
 
+    this.coreProcrastinating[core] = false;
+
     const timeblocks = this.coreTimeBlocks[core];
     const timeblockCount = timeblocks.length;
+
+    if (timeblocks[timeblockCount - 1]?.state == CoreState.IDLE) {
+      return;
+    }
 
     if (timeblockCount > 0) {
       if (timeblocks[timeblockCount - 1].state == CoreState.IDLE)
@@ -212,8 +258,19 @@ export class AnalyticsService {
     const now = Date.now();
     this.ensureCoreCount(core);
 
+    this.coreProcrastinating[core] = true;
+
+    if (!this.coreOpen[core])
+      return;
+
+    this.coreProcrastinating[core] = false;
+
     const timeblocks = this.coreTimeBlocks[core];
     const timeblockCount = timeblocks.length;
+
+    if (timeblocks[timeblockCount - 1]?.state == CoreState.BUSY) {
+      return;
+    }
 
     if (timeblockCount > 0) {
       if (timeblocks[timeblockCount - 1].state == CoreState.BUSY)
@@ -231,7 +288,30 @@ export class AnalyticsService {
     });
   }
 
+  openCore(core: number) {
+    this.ensureCoreCount(core);
+    this.coreOpen[core] = true;
+
+    if (this.coreProcrastinating[core])
+      this.coreBusy(core);
+  }
+
+  closeCore(core: number) {
+    this.ensureCoreCount(core);
+    this.coreOpen[core] = false;
+    this.coreIdle(core);
+  }
+
   private ensureCoreCount(core: number) {
+
+    while (this.coreOpen.length - 1 < core)
+      this.coreOpen.push(false);
+
+    while (this.coreProcrastinating.length - 1 < core)
+      this.coreProcrastinating.push(false);
+
+    while (this.processData.length - 1 < core)
+      this.processData.push([]);
 
     while (this.coreUtilization.length - 1 < core)
       this.coreUtilization.push(0);
@@ -244,8 +324,13 @@ export class AnalyticsService {
         }
       );
 
+    // console.log("coreTimeblocks before trying to add");
+    // console.log(JSON.stringify(this.coreTimeBlocks));
     while (this.coreTimeBlocks.length - 1 < core)
       this.coreTimeBlocks.push([]);
+
+    console.log("coreTimeblocks after addition");
+    console.log(JSON.stringify(this.coreTimeBlocks));
 
     while (this.correctedUntil.length - 1 < core)
       this.correctedUntil.push(0);
@@ -268,118 +353,124 @@ export class AnalyticsService {
 
   }
 
-  private correctedUntil: number[] = []
+  private correctedUntil: number[] = [0]
   updateCoreUtilization() {
-
     const now = Date.now();
 
     for (let core = 0; core < this.coreTimeBlocks.length; core++) {
       const timeblocks = this.coreTimeBlocks[core];
 
-      let j;
-      for (
-        j = this.correctedUntil[core];
-        now - timeblocks[j].from > this.coreWindow && j < timeblocks.length;
-        j++
-      )
-      {
+      if (timeblocks.length === 0) {
+        continue;
+      }
+
+      this.coreData[core].totalIdleTime = 0;
+      this.coreData[core].totalBusyTime = 0;
+
+      let j = this.correctedUntil[core];
+
+      // Process timeblocks that are now outside the coreWindow
+      while (j < timeblocks.length && now - timeblocks[j].from > this.coreWindow) {
         const timeblock = timeblocks[j];
 
         if (timeblock.to == Time.NOT_ASSIGNED_YET) {
+          // If the timeblock hasn't ended yet, but started before the window
+          const timeInWindow = this.coreWindow;
 
           if (timeblock.state == CoreState.IDLE) {
-
-            this.coreData[core].totalIdleTime = this.coreWindow;
-            this.coreData[core].totalBusyTime = 0;
-
+            this.coreData[core].totalIdleTime += timeInWindow;
           }
           else if (timeblock.state == CoreState.BUSY) {
-
-            this.coreData[core].totalBusyTime = this.coreWindow;
-            this.coreData[core].totalIdleTime = 0;
-
+            this.coreData[core].totalBusyTime += timeInWindow;
           }
 
-          timeblock.factoredIn = now - timeblock.from;
+          timeblock.factoredIn = timeInWindow;
         }
         else if (now - timeblock.to < this.coreWindow) {
-
-          const needToFactorIn = timeblock.to - (now - this.coreWindow);
-          const diff = needToFactorIn - timeblock.factoredIn;
-
-          if (timeblock.state == CoreState.IDLE) {
-            this.coreData[core].totalIdleTime += diff;
-          }
-          else if (timeblock.state == CoreState.BUSY) {
-            this.coreData[core].totalBusyTime += diff;
-          }
-
-          timeblock.factoredIn += diff;
-        }
-        else if (now - timeblock.to >= this.coreWindow) {
-          const erase = timeblock.factoredIn;
+          // If the timeblock ends within the window but started before it
+          const timeInWindow = timeblock.to - (now - this.coreWindow);
 
           if (timeblock.state == CoreState.IDLE) {
-            this.coreData[core].totalIdleTime -= erase;
+            this.coreData[core].totalIdleTime += timeInWindow;
           }
           else if (timeblock.state == CoreState.BUSY) {
-            this.coreData[core].totalBusyTime -= erase;
+            this.coreData[core].totalBusyTime += timeInWindow;
           }
 
-          timeblock.factoredIn = 0;
-        }
-      }
-
-      this.correctedUntil[core] = j - 1 >= 0 ? j - 1 : 0;
-
-      for (j; j < timeblocks.length; j++) {
-
-        const timeblock = timeblocks[j];
-
-        let needToFactorIn;
-        if (timeblock.to == Time.NOT_ASSIGNED_YET) {
-          needToFactorIn = now - timeblock.from;
+          timeblock.factoredIn = timeInWindow;
         }
         else {
-          needToFactorIn = timeblock.to - timeblock.from;
+          timeblock.factoredIn = 0;
         }
 
-        const diff = needToFactorIn - timeblock.factoredIn;
-
-        if (timeblock.state == CoreState.IDLE) {
-          this.coreData[core].totalIdleTime += diff;
-        }
-        else if (timeblock.state == CoreState.BUSY) {
-          this.coreData[core].totalBusyTime += diff;
-        }
-
+        j++;
       }
 
+      this.correctedUntil[core] = j > 0 ? j - 1 : 0;
+
+      // Process timeblocks that are within the coreWindow
+      for (; j < timeblocks.length; j++) {
+        const timeblock = timeblocks[j];
+        let timeInWindow;
+
+        if (timeblock.to == Time.NOT_ASSIGNED_YET) {
+          timeInWindow = Math.min(now - timeblock.from, this.coreWindow);
+        }
+        else {
+          const blockStart = Math.max(timeblock.from, now - this.coreWindow);
+          timeInWindow = timeblock.to - blockStart;
+        }
+
+        timeInWindow = Math.max(0, timeInWindow);
+
+        if (timeblock.state == CoreState.IDLE) {
+          this.coreData[core].totalIdleTime += timeInWindow;
+        }
+        else if (timeblock.state == CoreState.BUSY) {
+          this.coreData[core].totalBusyTime += timeInWindow;
+        }
+
+        timeblock.factoredIn = timeInWindow;
+      }
+
+      const totalTime = this.coreData[core].totalIdleTime + this.coreData[core].totalBusyTime;
+      if (totalTime > this.coreWindow) {
+        const scale = this.coreWindow / totalTime;
+        this.coreData[core].totalIdleTime *= scale;
+        this.coreData[core].totalBusyTime *= scale;
+      }
     }
 
-    // It is okay if we erase the timeblocks beyond the coreWindow only every now and then
-    // as long as we don't consider them, thus decreasing the frequency of this costly operation.
-    if (Math.random() < 0.05) {
+    // Since we are not considering timeblocks beyond the window, it is acceptable to clean them up
+    // only occasionally, thus reducing the frequency of this costly operation
+    if (Math.random() < 0.2) {
       for (let core = 0; core < this.correctedUntil.length; core++) {
-
-        if (this.correctedUntil[core] - 1 >= 0) {
-          const sliceIndex = this.correctedUntil[core] - 1;
+        if (this.correctedUntil[core] > 0) {
+          const sliceIndex = this.correctedUntil[core];
           this.coreTimeBlocks[core] = this.coreTimeBlocks[core].slice(sliceIndex);
           this.correctedUntil[core] = 0;
         }
-
       }
     }
 
     for (let core = 0; core < this.coreUtilization.length; core++) {
       const cData = this.coreData[core];
-      this.coreUtilization[core] = cData.totalBusyTime / (cData.totalBusyTime + cData.totalIdleTime);
+      const totalTime = cData.totalBusyTime + cData.totalIdleTime;
+
+      if (totalTime <= 0) {
+        this.coreUtilization[core] = 0;
+      } else {
+        const utilization = cData.totalBusyTime / totalTime;
+        this.coreUtilization[core] = Math.max(0, Math.min(1, utilization));
+      }
     }
 
     if (this.coreUtilization.length > 0) {
-      this.overallCoreUtilization = this.coreUtilization.reduce((a, b) => a + b) / this.coreUtilization.length;
+      const sum = this.coreUtilization.reduce((a, b) => a + b, 0);
+      this.overallCoreUtilization = Math.max(0, Math.min(1, sum / this.coreUtilization.length));
+    } else {
+      this.overallCoreUtilization = 0;
     }
-
   }
 
   setWindow(window: number): boolean {
@@ -400,15 +491,23 @@ export class AnalyticsService {
     return false;
   }
 
+  getWindow(): number {
+    return this.window;
+  }
+
+  getCoreWindow(): number {
+    return this.coreWindow;
+  }
+
   getWaitingTime(core: number): number {
-    if (core < 0 || this.waitingTime.length - 1 > core)
+    if (core < 0 || core >= this.waitingTime.length)
       return -1;
 
     return this.waitingTime[core].average;
   }
 
   getTurnaroundTime(core: number): number {
-    if (core < 0 || this.turnaroundTime.length - 1 > core)
+    if (core < 0 || core >= this.turnaroundTime.length)
       return -1;
 
     return this.turnaroundTime[core].average;
@@ -423,8 +522,7 @@ export class AnalyticsService {
   }
 
   getCoreUtilization(core: number): number {
-
-    if (this.coreUtilization.length - 1 > core) {
+    if (core < 0 || core >= this.coreUtilization.length) {
       return -1;
     }
 

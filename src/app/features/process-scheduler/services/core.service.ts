@@ -12,7 +12,7 @@ export class CoreService {
 
   private analytics = inject(AnalyticsService);
 
-  private algorithm: Algorithm[] = [ Algorithm.FirstComeFirstServe ];
+  private algorithm: Algorithm[] = [Algorithm.FirstComeFirstServe];
 
   private timeQuantum: number[] = [5];
   private rr_step: number[] = [0];
@@ -28,7 +28,9 @@ export class CoreService {
     this.processQueue.push([]);
     this.timeQuantum.push(5);
     this.rr_step.push(0);
-    this.algorithm.push( Algorithm.FirstComeFirstServe );
+    this.algorithm.push(Algorithm.FirstComeFirstServe);
+
+    this.analytics.addCore();
 
     return true;
   }
@@ -37,18 +39,19 @@ export class CoreService {
     if (core < 0 || core >= this.coreCount)
       return false;
 
-    this.runningPId = this.runningPId.filter( (elem, i) => i != core );
-    this.processQueue = this.processQueue.filter( (elem, i) => i != core );
-    this.timeQuantum = this.timeQuantum.filter( (elem, i) => i != core );
-    this.rr_step = this.rr_step.filter( (elem, i) => i != core );
-    this.algorithm = this.rr_step.filter( (elem, i) => i != core );
+    this.runningPId = this.runningPId.filter((elem, i) => i != core);
+    this.processQueue = this.processQueue.filter((elem, i) => i != core);
+    this.timeQuantum = this.timeQuantum.filter((elem, i) => i != core);
+    this.rr_step = this.rr_step.filter((elem, i) => i != core);
+    this.algorithm = this.algorithm.filter((elem, i) => i != core);
     this.coreCount--;
 
+    this.analytics.removeCore(core);
     return true;
   }
 
   reset(): boolean {
-    this.algorithm = [ Algorithm.FirstComeFirstServe ];
+    this.algorithm = [Algorithm.FirstComeFirstServe];
 
     this.timeQuantum = [5];
     this.rr_step = [0];
@@ -56,12 +59,13 @@ export class CoreService {
     this.runningPId = [-1];
     this.processQueue = [[]];
 
+    this.analytics.reset();
     return true;
   }
 
   queueProcess(core: number, process: Process): boolean {
 
-    if ( core < 0 ||  core >= this.coreCount )
+    if (core < 0 || core >= this.coreCount)
       return false;
 
     this.processQueue[core].push(process);
@@ -80,19 +84,24 @@ export class CoreService {
 
   getSchedulingAlgo(core: number): string {
 
-    switch (this.algorithm[core]) {
-      case (Algorithm.FirstComeFirstServe):
-        return "First Come First Serve";
-      case (Algorithm.ShortestJobFirst):
-        return "Shortest Job First";
-      case (Algorithm.RoundRobin):
-        return "Round Robin";
+    if (this.algorithm[core] == Algorithm.FirstComeFirstServe) {
+      return "First Come First Serve";
+    } else if (this.algorithm[core] == Algorithm.ShortestJobFirst) {
+      return "Shortest Job First";
+    } else if (this.algorithm[core] == Algorithm.RoundRobin) {
+      return "Round Robin";
     }
+
+    return "idk";
 
   }
 
   getProcessQueue(core: number): Process[] {
     return this.processQueue[core];
+  }
+
+  getQueueLength(core: number): number {
+    return this.processQueue[core].length;
   }
 
   getCoreCount(): number {
@@ -126,12 +135,8 @@ export class CoreService {
 
     runningProc.remaining -= 1;
 
-    switch(this.algorithm[core]) {
-      case Algorithm.FirstComeFirstServe:
-
-        if (runningProc.remaining > 0)
-          break;
-
+    if (this.algorithm[core] == Algorithm.FirstComeFirstServe) {
+      if (runningProc.remaining == 0) {
         this.analytics.processFinished(this.runningPId[core], core);
         this.removeProcess(core, this.runningPId[core]);
         this.runningPId[core] = -1;
@@ -140,54 +145,49 @@ export class CoreService {
           this.runningPId[core] = this.processQueue[core][0].id;
           this.analytics.processRunning(this.runningPId[core], core);
         }
+      }
+    }
+    else if (this.algorithm[core] == Algorithm.ShortestJobFirst) {
+      if (runningProc.remaining == 0) {
+        this.analytics.processFinished(runningProc.id, core);
+        this.removeProcess(core, runningProc.id);
+      }
 
-        break;
+      const shortest: Process = [...this.processQueue[core]].sort((a, b) => a.burstLength - b.burstLength)[0];
+      this.runningPId[core] = shortest.id;
 
-      case Algorithm.ShortestJobFirst:
+      if (this.processQueue[core][0].id != this.runningPId[core]) {
+        this.analytics.processWaiting(this.processQueue[core][0].id, core);
+        this.bringToFront(core, shortest);
+        this.analytics.processRunning(this.runningPId[core], core);
+      }
+    }
+    else if (this.algorithm[core] == Algorithm.RoundRobin) {
 
-        if (runningProc.remaining == 0) {
+      if (this.rr_step[core] < this.timeQuantum[core])
+        this.rr_step[core]++;
+
+      const change: Boolean = (this.rr_step[core] % this.timeQuantum[core] == 0 && this.processQueue[core].length > 1)
+        || runningProc.remaining <= 0;
+
+      if (change) {
+        this.rr_step[core] = 0;
+        this.removeProcess(core, runningProc.id);
+
+        if (runningProc.remaining > 0) {
+          this.analytics.processWaiting(runningProc.id, core);
+          this.queueProcess(core, runningProc);
+        }
+        else {
           this.analytics.processFinished(runningProc.id, core);
-          this.removeProcess(core, runningProc.id);
         }
 
-        const shortest: Process = [...this.processQueue[core]].sort((a, b) => a.burstLength - b.burstLength)[0];
-        this.runningPId[core] = shortest.id;
-
-        if (this.processQueue[core][0].id != this.runningPId[core]) {
-          this.analytics.processWaiting(this.processQueue[core][0].id, core);
-          this.bringToFront(core, shortest);
+        if (this.processQueue[core].length > 0) {
+          this.runningPId[core] = this.processQueue[core][0].id;
           this.analytics.processRunning(this.runningPId[core], core);
         }
+      }
 
-        break;
-      case Algorithm.RoundRobin:
-
-        if (this.rr_step[core] < this.timeQuantum[core])
-          this.rr_step[core]++;
-
-        const change: Boolean = ( this.rr_step[core] % this.timeQuantum[core] == 0 && this.processQueue[core].length > 1 )
-          || runningProc.remaining <= 0 ;
-
-        if (change) {
-          this.rr_step[core] = 0;
-          this.removeProcess(core, runningProc.id);
-
-          if (runningProc.remaining > 0) {
-            this.analytics.processWaiting(runningProc.id, core);
-            this.queueProcess(core, runningProc);
-          }
-          else {
-            this.analytics.processFinished(runningProc.id, core);
-          }
-
-          if (this.processQueue[core].length > 0) {
-            this.runningPId[core] = this.processQueue[core][0].id;
-            this.analytics.processRunning(this.runningPId[core], core);
-          }
-
-        }
-
-        break;
     }
 
     return this.runningPId[core];

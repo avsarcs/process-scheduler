@@ -1,0 +1,64 @@
+.core-probability-container {
+  max-width: 800px;
+}
+
+.distribution-buttons {
+  margin: 10px 0;
+}
+
+.distribution-button {
+  margin-right: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.cores-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.description {
+  font-size: 0.9rem;
+  color: #666;
+  font-style: italic;
+}
+
+.table-header,
+.core-row {
+  display: grid;
+  grid-template-columns: 80px 80px 1fr;
+  border-bottom: 1px solid #ddd;
+}
+
+.table-header {
+  font-weight: bold;
+}
+
+.core-column,
+.speed-column,
+.probability-column {
+  padding: 8px;
+}
+
+.slider-container {
+  display: flex;
+  align-items: center;
+}
+
+.probability-slider {
+  flex: 1;
+  margin-right: 10px;
+}
+
+.probability-input {
+  width: 60px;
+  border: 1px solid #ccc;
+  text-align: right;
+  padding: 2px 4px;
+}
+
+.probability-input.has-error {
+  border-color: #e63946;
+  background-color: #fff5f5;
+}
